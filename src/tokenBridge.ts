@@ -1,5 +1,11 @@
 import type { Chain, Network, TokenId } from "@wormhole-foundation/sdk";
-import { TokenTransfer, Wormhole, amount, isTokenId, wormhole } from "@wormhole-foundation/sdk";
+import {
+  TokenTransfer,
+  Wormhole,
+  amount,
+  isTokenId,
+  wormhole,
+} from "@wormhole-foundation/sdk";
 
 // Import the platform-specific packages
 
@@ -7,6 +13,9 @@ import evm from "@wormhole-foundation/sdk/evm";
 import solana from "@wormhole-foundation/sdk/solana";
 import type { SignerStuff } from "./helpers/index.js";
 import { getSigner, waitLog } from "./helpers/index.js";
+
+// src/tokenBridge.ts
+import { tokenTransfer } from "./helpers/tokenTransfer";
 
 (async function () {
   // Init Wormhole object, passing config for which network
@@ -79,10 +88,12 @@ import { getSigner, waitLog } from "./helpers/index.js";
           destination,
           delivery: {
             automatic,
-            nativeGas: nativeGas ? amount.units(amount.parse(nativeGas, decimals)) : undefined,
+            nativeGas: nativeGas
+              ? amount.units(amount.parse(nativeGas, decimals))
+              : undefined,
           },
         },
-        roundTrip,
+        roundTrip
       )
     : // Recover the transfer from the originating txid
       await TokenTransfer.from(wh, {
@@ -95,73 +106,3 @@ import { getSigner, waitLog } from "./helpers/index.js";
   // Log out the results
   console.log(receipt);
 })();
-
-async function tokenTransfer<N extends Network>(
-  wh: Wormhole<N>,
-  route: {
-    token: TokenId;
-    amount: bigint;
-    source: SignerStuff<N, Chain>;
-    destination: SignerStuff<N, Chain>;
-    delivery?: {
-      automatic: boolean;
-      nativeGas?: bigint;
-    };
-    payload?: Uint8Array;
-  },
-  roundTrip?: boolean,
-): Promise<TokenTransfer<N>> {
-  // EXAMPLE_TOKEN_TRANSFER
-  // Create a TokenTransfer object to track the state of the transfer over time
-  const xfer = await wh.tokenTransfer(
-    route.token,
-    route.amount,
-    route.source.address,
-    route.destination.address,
-    route.delivery?.automatic ?? false,
-    route.payload,
-    route.delivery?.nativeGas,
-  );
-
-  const quote = await TokenTransfer.quoteTransfer(
-    wh,
-    route.source.chain,
-    route.destination.chain,
-    xfer.transfer,
-  );
-  console.log(quote);
-
-  if (xfer.transfer.automatic && quote.destinationToken.amount < 0)
-    throw "The amount requested is too low to cover the fee and any native gas requested.";
-
-  // 1) Submit the transactions to the source chain, passing a signer to sign any txns
-  console.log("Starting transfer");
-  const srcTxids = await xfer.initiateTransfer(route.source.signer);
-  console.log(`Started transfer: `, srcTxids);
-
-  // If automatic, we're done
-  if (route.delivery?.automatic) return xfer;
-
-  // 2) Wait for the VAA to be signed and ready (not required for auto transfer)
-  console.log("Getting Attestation");
-  const attestIds = await xfer.fetchAttestation(60_000);
-  console.log(`Got Attestation: `, attestIds);
-
-  // 3) Redeem the VAA on the dest chain
-  console.log("Completing Transfer");
-  const destTxids = await xfer.completeTransfer(route.destination.signer);
-  console.log(`Completed Transfer: `, destTxids);
-  // EXAMPLE_TOKEN_TRANSFER
-
-  // If no need to send back, dip
-  if (!roundTrip) return xfer;
-
-  const { destinationToken: token } = quote;
-  return await tokenTransfer(wh, {
-    ...route,
-    token: token.token,
-    amount: token.amount,
-    source: route.destination,
-    destination: route.source,
-  });
-}

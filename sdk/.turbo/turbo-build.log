@@ -1,0 +1,12 @@
+
+> @wormhole-foundation/sdk@0.14.0 build
+> npm run build:esm && npm run build:cjs
+
+
+> @wormhole-foundation/sdk@0.14.0 build:esm
+> tsc -p ./tsconfig.esm.json
+
+
+> @wormhole-foundation/sdk@0.14.0 build:cjs
+> tsc -p ./tsconfig.cjs.json  && echo '{"type":"commonjs"}' > dist/cjs/package.json
+
